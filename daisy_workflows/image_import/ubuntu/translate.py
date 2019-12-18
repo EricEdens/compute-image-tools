@@ -173,6 +173,9 @@ def remove_azure_agents(g):
 
 def main():
   g = diskutils.MountDisk('/dev/sdb')
+  assert g.gcp_image_distro == 'ubuntu', (
+    'The workflow was instantiated for ubuntu, '
+    'but the disk contains %s.' % g.gcp_image_distro)
   DistroSpecific(g)
   utils.CommonRoutines(g)
   diskutils.UnmountDisk(g)

@@ -97,6 +97,9 @@ def DistroSpecific(g):
 
 def main():
   g = diskutils.MountDisk('/dev/sdb')
+  assert g.gcp_image_distro == 'debian', (
+      'The workflow was instantiated for debian, '
+      'but the disk contains %s.' % g.gcp_image_distro)
   DistroSpecific(g)
   utils.CommonRoutines(g)
   diskutils.UnmountDisk(g)

@@ -184,6 +184,9 @@ def DistroSpecific(g):
 def main():
   disk = '/dev/sdb'
   g = diskutils.MountDisk(disk)
+  assert g.gcp_image_distro == 'rhel' or g.gcp_image_distro == 'centos', (
+      'The workflow was instantiated for either rhel or centos, '
+      'but the disk contains %s.' % g.gcp_image_distro)
   DistroSpecific(g)
   utils.CommonRoutines(g)
   diskutils.UnmountDisk(g)
