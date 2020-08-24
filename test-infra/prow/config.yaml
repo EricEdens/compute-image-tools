@@ -223,6 +223,8 @@ periodics:
        env:
        - name: ARTIFACTS
          value: /artifacts
+       - name: GOOGLE_APPLICATION_CREDENTIALS
+         value: /etc/compute-image-tools-test-service-account/creds.json
        volumeMounts:
        - name: compute-image-tools-test-service-account
          mountPath: /etc/compute-image-tools-test-service-account
