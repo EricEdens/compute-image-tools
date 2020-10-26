@@ -33,6 +33,10 @@ type workflowLoggable struct {
 	wf *daisy.Workflow
 }
 
+func (w workflowLoggable) GetOutputInfo() *OutputInfo {
+	return &OutputInfo{}
+}
+
 func (w workflowLoggable) GetValue(key string) string {
 	return w.wf.GetSerialConsoleOutputValue(key)
 }

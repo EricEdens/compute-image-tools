@@ -19,6 +19,8 @@ import (
 
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/disk"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
+	"github.com/GoogleCloudPlatform/compute-image-tools/proto/go/pb"
+
 	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
 )
 
@@ -37,23 +39,24 @@ func (p *diskInspectionProcessor) process(pd persistentDisk,
 	}
 
 	ir, err := p.inspectDisk(pd.uri)
+	loggableBuilder.GetOutputInfo().InspectionResults = ir
 	if err != nil {
 		// Don't directly return err to avoid terminating the import.
 		loggableBuilder.AppendTraceLogs([]string{err.Error()})
 		return pd, nil
 	}
 
-	isDualBoot := ir.UEFIBootable && ir.BIOSBootableWithHybridMBROrProtectiveMBR
+	isDualBoot := ir.GetUefiBootable() && ir.GetBiosBootable()
 	if !p.args.UefiCompatible && isDualBoot {
 		log.Printf("This disk can boot with either BIOS or a UEFI bootloader. The default setting for booting is BIOS. " +
 			"If you want to boot using UEFI, please see https://cloud.google.com/compute/docs/import/importing-virtual-disks#importing_a_virtual_disk_with_uefi_bootloader'.")
 	}
-	pd.isUEFICompatible = p.args.UefiCompatible || (ir.UEFIBootable && !isDualBoot)
-	loggableBuilder.SetUEFIMetrics(pd.isUEFICompatible, ir.UEFIBootable, ir.BIOSBootableWithHybridMBROrProtectiveMBR, ir.RootFS)
+	pd.isUEFICompatible = p.args.UefiCompatible || (ir.GetUefiBootable() && !isDualBoot)
+	loggableBuilder.SetUEFIMetrics(pd.isUEFICompatible, ir.GetUefiBootable(), ir.GetBiosBootable(), ir.GetRootFs())
 	return pd, nil
 }
 
-func (p *diskInspectionProcessor) inspectDisk(uri string) (disk.InspectionResult, error) {
+func (p *diskInspectionProcessor) inspectDisk(uri string) (*pb.InspectionResults, error) {
 	log.Printf("Running disk inspections on %v.", uri)
 	ir, err := p.diskInspector.Inspect(uri, p.args.Inspect)
 	if err != nil {

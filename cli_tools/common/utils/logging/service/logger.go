@@ -27,10 +27,12 @@ import (
 	"sync"
 	"time"
 
-	daisyutils "github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/daisy"
-	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
 	"github.com/google/uuid"
 	"github.com/minio/highwayhash"
+
+	daisyutils "github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/daisy"
+	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
+	"github.com/GoogleCloudPlatform/compute-image-tools/proto/go/pb"
 )
 
 var (
@@ -194,13 +196,10 @@ func (l *Logger) getOutputInfo(loggable Loggable, err error) *OutputInfo {
 		o.IsUEFICompatibleImage = loggable.GetValueAsBool(isUEFICompatibleImage)
 		o.IsUEFIDetected = loggable.GetValueAsBool(isUEFIDetected)
 
-		// TODO: ideally we suppose to set o.InspectionResults. Will modify after proto is adjusted.
-		if l.Params.ImageImportParams != nil {
-			l.Params.ImageImportParams.InspectionResults = InspectionResults{
-				UEFIBootable: loggable.GetValueAsBool(uefiBootable),
-				BIOSBootable: loggable.GetValueAsBool(biosBootable),
-				RootFS:       loggable.GetValue(rootFS),
-			}
+		o.InspectionResults = &pb.InspectionResults{
+			BiosBootable: loggable.GetValueAsBool(biosBootable),
+			UefiBootable: loggable.GetValueAsBool(uefiBootable),
+			RootFs:       loggable.GetValue(rootFS),
 		}
 	}
 
@@ -287,6 +286,10 @@ func (l *Logger) sendLogToServerWithRetry(logExtension *ComputeImageToolsLogExte
 			time.Sleep(time.Duration(nextRequestWaitMillis) * time.Millisecond)
 		}
 
+		if logExtension.OutputInfo != nil {
+			logExtension.OutputInfo.SerialOutputs = []string{}
+		}
+
 		logRequestJSON, err := l.constructLogRequest(logExtension)
 		if err != nil {
 			fmt.Println("Failed to log to server: failed to prepare json log data.")
@@ -306,6 +309,8 @@ func (l *Logger) sendLogToServerWithRetry(logExtension *ComputeImageToolsLogExte
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
 		req.Header.Set("X-Goog-Api-Key", key)
+		pretty, _ := json.MarshalIndent(logExtension, "", "  ")
+		fmt.Printf("\n\nRequest: %s\n\n", pretty)
 		resp, err := httpClient.Do(req)
 		if err != nil {
 			fmt.Println("Failed to log to server: ", err)
@@ -319,6 +324,7 @@ func (l *Logger) sendLogToServerWithRetry(logExtension *ComputeImageToolsLogExte
 			fmt.Println("Failed to parse log response: ", err, "\nResponse: ", string(body))
 			return failedToParseResponse
 		}
+		fmt.Printf("\n\nResponse: %s %v\n\n", resp.Status, string(body))
 
 		// Honor "NextRequestWaitMillis" from server for traffic control. However, wait no more than 5s to prevent a long
 		// stuck

@@ -14,6 +14,8 @@
 
 package service
 
+import "github.com/GoogleCloudPlatform/compute-image-tools/proto/go/pb"
+
 // logRequest is a server-side pre-defined data structure
 type logRequest struct {
 	ClientInfo    clientInfo `json:"client_info"`
