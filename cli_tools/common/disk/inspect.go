@@ -36,6 +36,9 @@ const (
 )
 
 // Inspector finds partition and boot-related properties for a disk.
+//
+// To rebuild the mock, run `go generate ./...`
+//go:generate go run github.com/golang/mock/mockgen -source $GOFILE -destination mocks/mock_inspect.go
 type Inspector interface {
 	// Inspect finds partition and boot-related properties for a disk and
 	// returns an InspectionResult. The reference is implementation specific.
