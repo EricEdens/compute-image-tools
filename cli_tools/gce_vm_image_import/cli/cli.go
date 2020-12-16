@@ -71,14 +71,14 @@ func Main(args []string) error {
 		return err
 	}
 
-	importRunner, err := importer.NewImporter(importArgs, computeClient, *storageClient)
+	importRunner, err := importer.NewImporter(importArgs, computeClient, *storageClient, toolLogger)
 	if err != nil {
 		logFailure(importArgs, err)
 		return err
 	}
 
-	importClosure := func() (service.Loggable, error) {
-		return importRunner.Run(ctx)
+	importClosure := func() (logging.OutputInfoReader, error) {
+		return toolLogger, importRunner.Run(ctx)
 	}
 
 	project := importArgs.Project
@@ -92,7 +92,7 @@ func Main(args []string) error {
 // logFailure sends a message to the logging framework, and is expected to be
 // used when a validation failure causes the import to not run.
 func logFailure(allArgs importer.ImportArguments, cause error) {
-	noOpCallback := func() (service.Loggable, error) {
+	noOpCallback := func() (logging.OutputInfoReader, error) {
 		return nil, cause
 	}
 	// Ignoring the returned error since its a copy of

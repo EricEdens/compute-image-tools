@@ -21,12 +21,13 @@ import (
 
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/imagefile"
 	daisyUtils "github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/daisy"
-	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
+	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/storage"
 	string_utils "github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/string"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/daisycommon"
 	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
 	daisyCompute "github.com/GoogleCloudPlatform/compute-image-tools/daisy/compute"
+	"github.com/GoogleCloudPlatform/compute-image-tools/proto/go/pb"
 	"google.golang.org/api/compute/v1"
 )
 
@@ -45,9 +46,9 @@ const (
 
 // inflaterFacade implements an inflater using other concrete implementations.
 type inflaterFacade struct {
-	mainInflater    Inflater
-	shadowInflater  Inflater
-	loggableBuilder *service.SingleImageImportLoggableBuilder
+	mainInflater   Inflater
+	shadowInflater Inflater
+	logger         logging.Logger
 }
 
 // signals to control the verification towards shadow inflater
@@ -125,8 +126,12 @@ func (facade *inflaterFacade) Inflate() (persistentDisk, shadowTestFields, error
 		}
 	}
 
-	facade.loggableBuilder.SetInflationAttributes(matchResult, ii.inflationType, ii.inflationTime.Milliseconds(), shadowIi.inflationTime.Milliseconds())
-
+	facade.logger.Metric(&pb.OutputInfo{
+		ShadowDiskMatchResult: matchResult,
+		InflationType:         ii.inflationType,
+		InflationTimeMs:       []int64{ii.inflationTime.Milliseconds()},
+		ShadowInflationTimeMs: []int64{shadowIi.inflationTime.Milliseconds()},
+	})
 	return pd, ii, err
 }
 
@@ -179,15 +184,16 @@ func (inflater *daisyInflater) Inflate() (persistentDisk, shadowTestFields, erro
 	if inflater.wf.Logger != nil {
 		inflater.serialLogs = inflater.wf.Logger.ReadSerialPortLogs()
 	}
+
 	// See `daisy_workflows/image_import/import_image.sh` for generation of these values.
-	targetSizeGB := inflater.wf.GetSerialConsoleOutputValue("target-size-gb")
-	sourceSizeGB := inflater.wf.GetSerialConsoleOutputValue("source-size-gb")
+	targetSizeGB := string_utils.SafeStringToInt(inflater.wf.GetSerialConsoleOutputValue("target-size-gb"))
+	sourceSizeGB := string_utils.SafeStringToInt(inflater.wf.GetSerialConsoleOutputValue("source-size-gb"))
 	importFileFormat := inflater.wf.GetSerialConsoleOutputValue("import-file-format")
 	checksum := inflater.wf.GetSerialConsoleOutputValue("disk-checksum")
 	return persistentDisk{
 			uri:        inflater.inflatedDiskURI,
-			sizeGb:     string_utils.SafeStringToInt(targetSizeGB),
-			sourceGb:   string_utils.SafeStringToInt(sourceSizeGB),
+			sizeGb:     targetSizeGB,
+			sourceGb:   sourceSizeGB,
 			sourceType: importFileFormat,
 		}, shadowTestFields{
 			checksum:      checksum,
@@ -211,7 +217,7 @@ type shadowTestFields struct {
 }
 
 func newInflater(args ImportArguments, computeClient daisyCompute.Client, storageClient storage.Client,
-	inspector imagefile.Inspector, loggableBuilder *service.SingleImageImportLoggableBuilder) (Inflater, error) {
+	inspector imagefile.Inspector, logger logging.Logger) (Inflater, error) {
 
 	di, err := NewDaisyInflater(args, inspector)
 	if err != nil {
@@ -224,9 +230,9 @@ func newInflater(args ImportArguments, computeClient daisyCompute.Client, storag
 
 	ai := createAPIInflater(args, computeClient, storageClient)
 	return &inflaterFacade{
-		mainInflater:    di,
-		shadowInflater:  ai,
-		loggableBuilder: loggableBuilder,
+		mainInflater:   di,
+		shadowInflater: ai,
+		logger:         logger,
 	}, nil
 }
 

@@ -18,31 +18,43 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging"
 	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
 	"github.com/GoogleCloudPlatform/compute-image-tools/proto/go/pb"
 )
 
-// NewLoggableFromWorkflow provides a Loggable from a daisy workflow.
-func NewLoggableFromWorkflow(wf *daisy.Workflow) Loggable {
+// NewOutputInfoReaderFromWorkflow provides a OutputInfoReader from a daisy workflow.
+func NewOutputInfoReaderFromWorkflow(wf *daisy.Workflow) logging.OutputInfoReader {
 	if wf == nil {
 		return nil
 	}
-	return workflowLoggable{wf: wf}
+	return workflowOutputInfoReader{wf: wf}
 }
 
-type workflowLoggable struct {
+type workflowOutputInfoReader struct {
 	wf *daisy.Workflow
 }
 
-func (w workflowLoggable) GetInspectionResults() *pb.InspectionResults {
-	return nil
+func (w workflowOutputInfoReader) ReadOutputInfo() *pb.OutputInfo {
+	return &pb.OutputInfo{
+		TargetsSizeGb:         w.getValueAsInt64Slice(targetSizeGb),
+		SourcesSizeGb:         w.getValueAsInt64Slice(sourceSizeGb),
+		ImportFileFormat:      w.getValue(importFileFormat),
+		InflationType:         w.getValue(inflationType),
+		InflationTimeMs:       w.getValueAsInt64Slice(inflationTime),
+		ShadowInflationTimeMs: w.getValueAsInt64Slice(shadowInflationTime),
+		ShadowDiskMatchResult: w.getValue(shadowDiskMatchResult),
+		IsUefiCompatibleImage: w.getValueAsBool(isUEFICompatibleImage),
+		IsUefiDetected:        w.getValueAsBool(isUEFIDetected),
+		SerialOutputs:         w.readSerialPortLogs(),
+	}
 }
 
-func (w workflowLoggable) GetValue(key string) string {
+func (w workflowOutputInfoReader) getValue(key string) string {
 	return w.wf.GetSerialConsoleOutputValue(key)
 }
 
-func (w workflowLoggable) GetValueAsBool(key string) bool {
+func (w workflowOutputInfoReader) getValueAsBool(key string) bool {
 	v, err := strconv.ParseBool(w.wf.GetSerialConsoleOutputValue(key))
 	if err != nil {
 		return false
@@ -50,11 +62,11 @@ func (w workflowLoggable) GetValueAsBool(key string) bool {
 	return v
 }
 
-func (w workflowLoggable) GetValueAsInt64Slice(key string) []int64 {
+func (w workflowOutputInfoReader) getValueAsInt64Slice(key string) []int64 {
 	return getInt64Values(w.wf.GetSerialConsoleOutputValue(key))
 }
 
-func (w workflowLoggable) ReadSerialPortLogs() []string {
+func (w workflowOutputInfoReader) readSerialPortLogs() []string {
 	if w.wf.Logger != nil {
 		logs := w.wf.Logger.ReadSerialPortLogs()
 		view := make([]string, len(logs))

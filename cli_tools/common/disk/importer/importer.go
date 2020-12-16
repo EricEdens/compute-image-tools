@@ -23,10 +23,11 @@ import (
 
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/disk"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/imagefile"
-	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
+	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/storage"
 	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
 	"github.com/GoogleCloudPlatform/compute-image-tools/daisy/compute"
+	"github.com/GoogleCloudPlatform/compute-image-tools/proto/go/pb"
 	"google.golang.org/api/googleapi"
 )
 
@@ -38,13 +39,12 @@ const LogPrefix = "import-image"
 // Importer runs the end-to-end import workflow, and exposes the results
 // via an error and Loggable.
 type Importer interface {
-	Run(ctx context.Context) (service.Loggable, error)
+	Run(ctx context.Context) error
 }
 
 // NewImporter constructs an Importer instance.
-func NewImporter(args ImportArguments, computeClient compute.Client, storageClient storage.Client) (Importer, error) {
-	loggableBuilder := service.NewSingleImageImportLoggableBuilder()
-	inflater, err := newInflater(args, computeClient, storageClient, imagefile.NewGCSInspector(), loggableBuilder)
+func NewImporter(args ImportArguments, computeClient compute.Client, storageClient storage.Client, logger logging.Logger) (Importer, error) {
+	inflater, err := newInflater(args, computeClient, storageClient, imagefile.NewGCSInspector(), logger)
 	if err != nil {
 		return nil, err
 	}
@@ -64,9 +64,8 @@ func NewImporter(args ImportArguments, computeClient compute.Client, storageClie
 			computeClient,
 			newProcessPlanner(args, inspector),
 		},
-		traceLogs:       []string{},
-		diskClient:      computeClient,
-		loggableBuilder: loggableBuilder,
+		diskClient: computeClient,
+		logger:     logger,
 	}, nil
 }
 
@@ -78,40 +77,46 @@ type importer struct {
 	preValidator      validator
 	inflater          Inflater
 	processorProvider processorProvider
-	traceLogs         []string
 	diskClient        diskClient
-	loggableBuilder   *service.SingleImageImportLoggableBuilder
+	logger            logging.Logger
 	timeout           time.Duration
 }
 
-func (i *importer) Run(ctx context.Context) (loggable service.Loggable, err error) {
+func (i *importer) Run(ctx context.Context) error {
 	if i.timeout.Nanoseconds() > 0 {
 		var cancel func()
 		ctx, cancel = context.WithTimeout(ctx, i.timeout)
 		defer cancel()
 	}
-	if err = i.preValidator.validate(); err != nil {
-		return i.buildLoggable(), err
+	if err := i.preValidator.validate(); err != nil {
+		return err
 	}
 
 	defer i.deleteDisk()
 
 	if err := i.runInflate(ctx); err != nil {
-		return i.buildLoggable(), err
+		return err
 	}
 
-	err = i.runProcess(ctx)
+	err := i.runProcess(ctx)
 	if err != nil {
-		return i.buildLoggable(), err
+		return err
 	}
 
-	return i.buildLoggable(), err
+	return err
 }
 
 func (i *importer) runInflate(ctx context.Context) (err error) {
 	return i.runStep(ctx, func() error {
 		var err error
 		i.pd, _, err = i.inflater.Inflate()
+		if i.pd.sizeGb > 0 {
+			i.logger.Metric(&pb.OutputInfo{
+				SourcesSizeGb:    []int64{i.pd.sourceGb},
+				TargetsSizeGb:    []int64{i.pd.sizeGb},
+				ImportFileFormat: i.pd.sourceType,
+			})
+		}
 		return err
 	}, i.inflater.Cancel, i.inflater.TraceLogs)
 }
@@ -124,7 +129,7 @@ func (i *importer) runProcess(ctx context.Context) error {
 	for _, processor := range processors {
 		err = i.runStep(ctx, func() error {
 			var err error
-			i.pd, err = processor.process(i.pd, i.loggableBuilder)
+			i.pd, err = processor.process(i.pd)
 			if err != nil {
 				return err
 			}
@@ -173,7 +178,10 @@ func (i *importer) runStep(ctx context.Context, step func() error, cancel func(s
 	case stepErr := <-e:
 		err = stepErr
 	}
-	i.traceLogs = append(i.traceLogs, getTraceLogs()...)
+	for _, trace := range getTraceLogs() {
+		i.logger.Trace(trace)
+	}
+
 	return err
 }
 
@@ -202,12 +210,6 @@ func deleteDisk(diskClient diskClient, project string, zone string, pd persisten
 			log.Printf("Failed to remove temporary disk %v: %e", pd, err)
 		}
 	}
-}
-
-func (i *importer) buildLoggable() service.Loggable {
-	return i.loggableBuilder.SetDiskAttributes(i.pd.sourceType, i.pd.sourceGb, i.pd.sizeGb).
-		AppendTraceLogs(i.traceLogs).
-		Build()
 }
 
 // diskClient is the subset of the GCP API that is used by importer.

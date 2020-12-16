@@ -17,13 +17,18 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging"
+	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/mocks"
+	"github.com/GoogleCloudPlatform/compute-image-tools/proto/go/pb"
+	"github.com/GoogleCloudPlatform/compute-image-tools/proto/go/pbtesting"
+	"github.com/golang/mock/gomock"
 )
 
 var (
@@ -60,24 +65,23 @@ func TestLogStart(t *testing.T) {
 	}
 }
 
-func TestLogSuccess(t *testing.T) {
+func TestLogSuccess_RemovesSerialLogs(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
 	prepareTestLogger(t, nil, buildLogResponses(deleteRequest))
 	time.Sleep(20 * time.Millisecond)
-
-	w := literalLoggable{
-		strings: map[string]string{
-			importFileFormat: "vmdk",
-		},
-		int64s: map[string][]int64{
-			targetSizeGb: {5},
-			sourceSizeGb: {3, 2, 1},
-		},
-		traceLogs: []string{
-			"serial-log1", "serial-log2",
-		},
+	withSerialLogs := &pb.OutputInfo{
+		SourcesSizeGb:    []int64{3, 2, 1},
+		TargetsSizeGb:    []int64{5},
+		ImportFileFormat: "vmdk",
+		SerialOutputs:    []string{"log"},
 	}
 
-	e, r := logger.logSuccess(w)
+	mockLogReader := mocks.NewMockOutputInfoReader(mockCtrl)
+	mockLogReader.EXPECT().ReadOutputInfo().Return(withSerialLogs)
+
+	e, r := logger.logSuccess(mockLogReader)
 
 	if r != logResult(deleteRequest) {
 		t.Errorf("Unexpected logResult: %v, expect: %v", r, deleteRequest)
@@ -86,37 +90,35 @@ func TestLogSuccess(t *testing.T) {
 		t.Errorf("Unexpected Status %v, expect: %v", e.Status, statusSuccess)
 	}
 
-	expected := OutputInfo{
+	expected := &pb.OutputInfo{
 		SourcesSizeGb:    []int64{3, 2, 1},
 		TargetsSizeGb:    []int64{5},
 		ImportFileFormat: "vmdk",
 		SerialOutputs:    nil, // don't send serial output on success
 	}
-	assert.Equal(t, expected, *e.OutputInfo)
+	pbtesting.AssertEqual(t, expected, e.OutputInfo)
 	if e.ElapsedTimeMs < 20 {
 		t.Errorf("Unexpected ElapsedTimeMs %v < %v", e.ElapsedTimeMs, 20)
 	}
 }
 
-func TestLogFailure(t *testing.T) {
+func TestLogFailure_AddsRedactedFailure(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
 	prepareTestLogger(t, nil, buildLogResponses(deleteRequest))
 	time.Sleep(20 * time.Millisecond)
-
-	w := literalLoggable{
-		strings: map[string]string{
-			importFileFormat: "vmdk",
-		},
-		int64s: map[string][]int64{
-			targetSizeGb: {5},
-			sourceSizeGb: {3, 2, 1},
-		},
-		traceLogs: []string{
-			"serial-log1", "serial-log2",
-		},
+	withoutFailureMessage := &pb.OutputInfo{
+		SourcesSizeGb:    []int64{3, 2, 1},
+		TargetsSizeGb:    []int64{5},
+		ImportFileFormat: "vmdk",
+		SerialOutputs:    []string{"serial-log1", "serial-log2"},
 	}
-	e, r := logger.logFailure(fmt.Errorf("error - [Privacy-> sensitive <-Privacy]"), w)
 
-	expected := OutputInfo{
+	mockLogReader := mocks.NewMockOutputInfoReader(mockCtrl)
+	mockLogReader.EXPECT().ReadOutputInfo().Return(withoutFailureMessage)
+	e, r := logger.logFailure(fmt.Errorf("error - [Privacy-> sensitive <-Privacy]"), mockLogReader)
+
+	expected := &pb.OutputInfo{
 		SourcesSizeGb:                    []int64{3, 2, 1},
 		TargetsSizeGb:                    []int64{5},
 		FailureMessage:                   "error -  sensitive ",
@@ -124,7 +126,8 @@ func TestLogFailure(t *testing.T) {
 		ImportFileFormat:                 "vmdk",
 		SerialOutputs:                    []string{"serial-log1", "serial-log2"},
 	}
-	assert.Equal(t, expected, *e.OutputInfo)
+
+	pbtesting.AssertEqual(t, expected, e.OutputInfo)
 
 	if r != logResult(deleteRequest) {
 		t.Errorf("Unexpected logResult: %v, expect: %v", r, deleteRequest)
@@ -138,11 +141,13 @@ func TestLogFailure(t *testing.T) {
 }
 
 func TestRunWithServerLoggingSuccess(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
 	prepareTestLogger(t, nil, buildLogResponses(deleteRequest, deleteRequest))
 
 	logExtension, _ := logger.runWithServerLogging(
-		func() (Loggable, error) {
-			return literalLoggable{}, nil
+		func() (logging.OutputInfoReader, error) {
+			return logging.NewToolLogger(t.Name()), nil
 		}, nil)
 	if logExtension.Status != statusSuccess {
 		t.Errorf("Unexpected Status: %v, expect: %v", logExtension.Status, statusSuccess)
@@ -153,8 +158,8 @@ func TestRunWithServerLoggingFailed(t *testing.T) {
 	prepareTestLogger(t, nil, buildLogResponses(deleteRequest, deleteRequest))
 
 	logExtension, _ := logger.runWithServerLogging(
-		func() (Loggable, error) {
-			return literalLoggable{}, fmt.Errorf("test msg - failure by purpose")
+		func() (logging.OutputInfoReader, error) {
+			return logging.NewToolLogger(t.Name()), fmt.Errorf("test msg - failure by purpose")
 		}, nil)
 	if logExtension.Status != statusFailure {
 		t.Errorf("Unexpected Status: %v, expect: %v", logExtension.Status, statusFailure)
@@ -166,8 +171,8 @@ func TestRunWithServerLoggingSuccessWithUpdatedProject(t *testing.T) {
 
 	project := "dummy-project"
 	logExtension, _ := logger.runWithServerLogging(
-		func() (Loggable, error) {
-			return literalLoggable{}, nil
+		func() (logging.OutputInfoReader, error) {
+			return logging.NewToolLogger(t.Name()), nil
 		}, &project)
 	if logExtension.Status != statusSuccess {
 		t.Errorf("Unexpected Status: %v, expect: %v", logExtension.Status, statusSuccess)

@@ -69,14 +69,14 @@ const (
 // ComputeImageToolsLogExtension contains all log info, which should be align with sawmill server side configuration.
 type ComputeImageToolsLogExtension struct {
 	// This id is a random guid for correlation among multiple log lines of a single call
-	ID            string       `json:"id"`
-	CloudBuildID  string       `json:"cloud_build_id"`
-	ToolAction    string       `json:"tool_action"`
-	Status        string       `json:"status"`
-	ElapsedTimeMs int64        `json:"elapsed_time_ms"`
-	EventTimeMs   int64        `json:"event_time_ms"`
-	InputParams   *InputParams `json:"input_params,omitempty"`
-	OutputInfo    *OutputInfo  `json:"output_info,omitempty"`
+	ID            string         `json:"id"`
+	CloudBuildID  string         `json:"cloud_build_id"`
+	ToolAction    string         `json:"tool_action"`
+	Status        string         `json:"status"`
+	ElapsedTimeMs int64          `json:"elapsed_time_ms"`
+	EventTimeMs   int64          `json:"event_time_ms"`
+	InputParams   *InputParams   `json:"input_params,omitempty"`
+	OutputInfo    *pb.OutputInfo `json:"output_info,omitempty"`
 }
 
 // InputParams contains the union of all APIs' param info. To simplify logging service, we
@@ -228,35 +228,6 @@ type WindowsUpgradeParams struct {
 	CreateMachineBackup    bool   `json:"create_machine_backup"`
 	AutoRollback           bool   `json:"auto_rollback"`
 	UseStagingInstallMedia bool   `json:"use_staging_install_media"`
-}
-
-// OutputInfo contains output values from the tools execution
-type OutputInfo struct {
-	// Size of import/export sources (image or file)
-	SourcesSizeGb []int64 `json:"sources_size_gb,omitempty"`
-	// Size of import/export targets (image or file)
-	TargetsSizeGb []int64 `json:"targets_size_gb,omitempty"`
-	// Failure message of the command
-	FailureMessage string `json:"failure_message,omitempty"`
-	// Failure message of the command without privacy info
-	FailureMessageWithoutPrivacyInfo string `json:"failure_message_without_privacy_info,omitempty"`
-	// ImportFileFormat shows what is the actual image format of the imported file
-	ImportFileFormat string `json:"import_file_format,omitempty"`
-	// Serial output from worker instances; only populated
-	// if workflow failed.
-	SerialOutputs []string `json:"serial_outputs,omitempty"`
-	// Inflation type (qemu, API, etc)
-	InflationType string `json:"inflation_type,omitempty"`
-	// Inflation time (seconds)
-	InflationTime []int64 `json:"inflation_time_ms,omitempty"`
-	// Inflation time (seconds) of the shadow disk
-	ShadowInflationTime []int64 `json:"shadow_inflation_time_ms,omitempty"`
-	// Shadow disk match result for shadow disk inflater
-	ShadowDiskMatchResult string `json:"shadow_disk_match_result,omitempty"`
-	// Indicates whether UEFI_COMPATIBLE was added to the image's guestOSFeatures, either due to inspection or user request
-	IsUEFICompatibleImage bool `json:"is_uefi_compatible_image,omitempty"`
-	// Indicates whether the image is auto-detected to be UEFI compatible
-	IsUEFIDetected bool `json:"is_uefi_detected,omitempty"`
 }
 
 // InspectionResults contains metadata determined using automated inspection

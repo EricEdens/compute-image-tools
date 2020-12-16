@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	daisy_utils "github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/daisy"
-	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
 	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
 	"github.com/stretchr/testify/assert"
 )
@@ -42,7 +41,7 @@ func TestBootableDiskProcessor_Process_WritesSourceDiskVar(t *testing.T) {
 	}
 	p, err := newBootableDiskProcessor(args, opensuse15workflow)
 	assert.NoError(t, err)
-	_, err = p.process(persistentDisk{uri: "uri"}, service.NewSingleImageImportLoggableBuilder())
+	_, err = p.process(persistentDisk{uri: "uri"})
 	assert.Equal(t, "uri", p.(*bootableDiskProcessor).workflow.Vars["source_disk"].Value)
 }
 

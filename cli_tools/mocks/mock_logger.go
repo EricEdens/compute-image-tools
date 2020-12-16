@@ -104,18 +104,18 @@ func (m *MockOutputInfoReader) EXPECT() *MockOutputInfoReaderMockRecorder {
 	return m.recorder
 }
 
-// read mocks base method
-func (m *MockOutputInfoReader) read() *pb.OutputInfo {
+// ReadOutputInfo mocks base method
+func (m *MockOutputInfoReader) ReadOutputInfo() *pb.OutputInfo {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "read")
+	ret := m.ctrl.Call(m, "ReadOutputInfo")
 	ret0, _ := ret[0].(*pb.OutputInfo)
 	return ret0
 }
 
-// read indicates an expected call of read
-func (mr *MockOutputInfoReaderMockRecorder) read() *gomock.Call {
+// ReadOutputInfo indicates an expected call of ReadOutputInfo
+func (mr *MockOutputInfoReaderMockRecorder) ReadOutputInfo() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "read", reflect.TypeOf((*MockOutputInfoReader)(nil).read))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadOutputInfo", reflect.TypeOf((*MockOutputInfoReader)(nil).ReadOutputInfo))
 }
 
 // MockToolLogger is a mock of ToolLogger interface
@@ -189,16 +189,16 @@ func (mr *MockToolLoggerMockRecorder) Metric(metric interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Metric", reflect.TypeOf((*MockToolLogger)(nil).Metric), metric)
 }
 
-// read mocks base method
-func (m *MockToolLogger) read() *pb.OutputInfo {
+// ReadOutputInfo mocks base method
+func (m *MockToolLogger) ReadOutputInfo() *pb.OutputInfo {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "read")
+	ret := m.ctrl.Call(m, "ReadOutputInfo")
 	ret0, _ := ret[0].(*pb.OutputInfo)
 	return ret0
 }
 
-// read indicates an expected call of read
-func (mr *MockToolLoggerMockRecorder) read() *gomock.Call {
+// ReadOutputInfo indicates an expected call of ReadOutputInfo
+func (mr *MockToolLoggerMockRecorder) ReadOutputInfo() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "read", reflect.TypeOf((*MockToolLogger)(nil).read))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadOutputInfo", reflect.TypeOf((*MockToolLogger)(nil).ReadOutputInfo))
 }

@@ -15,7 +15,6 @@
 package importer
 
 import (
-	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
 	daisyCompute "github.com/GoogleCloudPlatform/compute-image-tools/daisy/compute"
 )
 
@@ -26,7 +25,7 @@ import (
 // Implementers can expose detailed logs using the traceLogs() method.
 type processor interface {
 	// Returns a pd with updated values. It can be a different pd with different URI.
-	process(persistentDisk, *service.SingleImageImportLoggableBuilder) (persistentDisk, error)
+	process(persistentDisk) (persistentDisk, error)
 	traceLogs() []string
 	cancel(reason string) bool
 }

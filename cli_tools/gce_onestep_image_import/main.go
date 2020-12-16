@@ -20,6 +20,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/gce_onestep_image_import/onestep_importer"
 )
@@ -33,7 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	importEntry := func() (service.Loggable, error) {
+	importEntry := func() (logging.OutputInfoReader, error) {
 		return importer.Run(importerArgs)
 	}
 

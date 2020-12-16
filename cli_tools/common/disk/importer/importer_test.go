@@ -25,16 +25,30 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
+	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/mocks"
+	"github.com/GoogleCloudPlatform/compute-image-tools/proto/go/pb"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 )
 
-func TestRun_HappyCase_CollectAllLogs(t *testing.T) {
+func TestRun_HappyCase_CollectAllTraceLogs(t *testing.T) {
 	inflaterLogs := []string{"log-a", "log-b"}
 	processorLogs := []string{"log-c", "log-d"}
-	expectedLogs := []string{"log-a", "log-b", "log-c", "log-d"}
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+	mockLogger.EXPECT().Metric(&pb.OutputInfo{
+		SourcesSizeGb:    []int64{10},
+		TargetsSizeGb:    []int64{100},
+		ImportFileFormat: "vmdk",
+	})
+	mockLogger.EXPECT().Trace("log-a")
+	mockLogger.EXPECT().Trace("log-b")
+	mockLogger.EXPECT().Trace("log-c")
+	mockLogger.EXPECT().Trace("log-d")
+
 	pd := persistentDisk{
 		sizeGb:     100,
 		sourceGb:   10,
@@ -52,21 +66,18 @@ func TestRun_HappyCase_CollectAllLogs(t *testing.T) {
 		processorProvider: &mockProcessorProvider{
 			processors: []processor{&mockProcessor},
 		},
-		loggableBuilder: service.NewSingleImageImportLoggableBuilder(),
+		logger: mockLogger,
 	}
-	loggable, actualError := importer.Run(context.Background())
+	actualError := importer.Run(context.Background())
 	assert.Nil(t, actualError)
-	assert.NotNil(t, loggable)
-	assert.Equal(t, expectedLogs, loggable.ReadSerialPortLogs())
-	assert.Equal(t, "vmdk", loggable.GetValue("import-file-format"))
-	assert.Equal(t, []int64{10}, loggable.GetValueAsInt64Slice("source-size-gb"))
-	assert.Equal(t, []int64{100}, loggable.GetValueAsInt64Slice("target-size-gb"))
-	assert.Equal(t, true, loggable.GetValueAsBool("is-uefi-compatible-image"))
-	assert.Equal(t, true, loggable.GetValueAsBool("is-uefi-detected"))
 	assert.Equal(t, 1, mockProcessor.interactions)
 }
 
-func TestRun_DeleteDisk(t *testing.T) {
+func TestRun_DeletesDisk_AfterImportingImage(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+
 	project := "project"
 	zone := "zone"
 	diskURI := "uri"
@@ -88,9 +99,9 @@ func TestRun_DeleteDisk(t *testing.T) {
 		processorProvider: &mockProcessorProvider{
 			processors: []processor{&mockProcessor{}},
 		},
-		loggableBuilder: service.NewSingleImageImportLoggableBuilder(),
+		logger: mockLogger,
 	}
-	_, actualError := importer.Run(context.Background())
+	actualError := importer.Run(context.Background())
 	assert.NoError(t, actualError)
 	assert.Equal(t, 1, mockDiskClient.interactions)
 	assert.Equal(t, project, mockDiskClient.project)
@@ -99,6 +110,10 @@ func TestRun_DeleteDisk(t *testing.T) {
 }
 
 func TestRun_NoErrorLoggedWhenDeletingDiskThatWasNotCreated(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
 	defer func() {
@@ -126,9 +141,9 @@ func TestRun_NoErrorLoggedWhenDeletingDiskThatWasNotCreated(t *testing.T) {
 		processorProvider: &mockProcessorProvider{
 			processors: []processor{&mockProcessor{}},
 		},
-		loggableBuilder: service.NewSingleImageImportLoggableBuilder(),
+		logger: mockLogger,
 	}
-	_, actualError := importer.Run(context.Background())
+	actualError := importer.Run(context.Background())
 	assert.NoError(t, actualError)
 	assert.Equal(t, 1, mockDiskClient.interactions)
 	assert.Equal(t, project, mockDiskClient.project)
@@ -137,6 +152,10 @@ func TestRun_NoErrorLoggedWhenDeletingDiskThatWasNotCreated(t *testing.T) {
 }
 
 func TestRun_ErrorLoggedWhenErrorDeletingDisk(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
 	defer func() {
@@ -164,9 +183,9 @@ func TestRun_ErrorLoggedWhenErrorDeletingDisk(t *testing.T) {
 		processorProvider: &mockProcessorProvider{
 			processors: []processor{&mockProcessor{}},
 		},
-		loggableBuilder: service.NewSingleImageImportLoggableBuilder(),
+		logger: mockLogger,
 	}
-	_, actualError := importer.Run(context.Background())
+	actualError := importer.Run(context.Background())
 	assert.NoError(t, actualError)
 	assert.Equal(t, 1, mockDiskClient.interactions)
 	assert.Equal(t, project, mockDiskClient.project)
@@ -175,20 +194,27 @@ func TestRun_ErrorLoggedWhenErrorDeletingDisk(t *testing.T) {
 }
 
 func TestRun_DontRunInflate_IfPreValidationFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+
 	expectedError := errors.New("failed validation")
 	inflater := mockInflater{}
 	importer := importer{
-		preValidator:    mockValidator{err: errors.New("failed validation")},
-		inflater:        &inflater,
-		loggableBuilder: service.NewSingleImageImportLoggableBuilder(),
+		preValidator: mockValidator{err: errors.New("failed validation")},
+		inflater:     &inflater,
+		logger:       mockLogger,
 	}
-	loggable, actualError := importer.Run(context.Background())
-	assert.NotNil(t, loggable)
+	actualError := importer.Run(context.Background())
 	assert.Equal(t, expectedError, actualError)
 	assert.Equal(t, 0, inflater.interactions)
 }
 
 func TestRun_DontRunProcessIfInflateFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+
 	expectedError := errors.New("the errors")
 	mockProcessorProvider := mockProcessorProvider{}
 	importer := importer{
@@ -197,22 +223,31 @@ func TestRun_DontRunProcessIfInflateFails(t *testing.T) {
 			err: expectedError,
 		},
 		processorProvider: &mockProcessorProvider,
-		loggableBuilder:   service.NewSingleImageImportLoggableBuilder(),
+		logger:            mockLogger,
 	}
-	loggable, actualError := importer.Run(context.Background())
-	assert.NotNil(t, loggable)
+	actualError := importer.Run(context.Background())
 	assert.Equal(t, expectedError, actualError)
 	assert.Equal(t, 0, mockProcessorProvider.interactions)
 }
 
 func TestRun_IncludeInflaterLogs_WhenFailureToCreateProcessor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+	mockLogger.EXPECT().Metric(&pb.OutputInfo{
+		SourcesSizeGb:    []int64{10},
+		TargetsSizeGb:    []int64{100},
+		ImportFileFormat: "vmdk",
+	})
+	mockLogger.EXPECT().Trace("log-a")
+	mockLogger.EXPECT().Trace("log-b")
+
 	mockProcessor := mockProcessor{}
 	expectedError := errors.New("the errors")
-	expectedLogs := []string{"log-a", "log-b"}
 	importer := importer{
 		preValidator: mockValidator{},
 		inflater: &mockInflater{
-			serialLogs: expectedLogs,
+			serialLogs: []string{"log-a", "log-b"},
 			pd: persistentDisk{
 				sizeGb:     100,
 				sourceGb:   10,
@@ -223,19 +258,18 @@ func TestRun_IncludeInflaterLogs_WhenFailureToCreateProcessor(t *testing.T) {
 			err:        expectedError,
 			processors: []processor{&mockProcessor},
 		},
-		loggableBuilder: service.NewSingleImageImportLoggableBuilder(),
+		logger: mockLogger,
 	}
-	loggable, actualError := importer.Run(context.Background())
+	actualError := importer.Run(context.Background())
 	assert.Equal(t, expectedError, actualError)
-	assert.NotNil(t, loggable)
-	assert.Equal(t, expectedLogs, loggable.ReadSerialPortLogs())
-	assert.Equal(t, "vmdk", loggable.GetValue("import-file-format"))
-	assert.Equal(t, []int64{10}, loggable.GetValueAsInt64Slice("source-size-gb"))
-	assert.Equal(t, []int64{100}, loggable.GetValueAsInt64Slice("target-size-gb"))
 	assert.Equal(t, 0, mockProcessor.interactions)
 }
 
 func TestRun_DeleteDisk_WhenFailureToCreateProcessor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+
 	project := "project"
 	zone := "zone"
 	diskURI := "uri"
@@ -257,9 +291,9 @@ func TestRun_DeleteDisk_WhenFailureToCreateProcessor(t *testing.T) {
 		processorProvider: &mockProcessorProvider{
 			err: expectedError,
 		},
-		loggableBuilder: service.NewSingleImageImportLoggableBuilder(),
+		logger: mockLogger,
 	}
-	_, actualError := importer.Run(context.Background())
+	actualError := importer.Run(context.Background())
 	assert.Equal(t, expectedError, actualError)
 	assert.Equal(t, 1, mockDiskClient.interactions)
 	assert.Equal(t, project, mockDiskClient.project)
@@ -268,6 +302,10 @@ func TestRun_DeleteDisk_WhenFailureToCreateProcessor(t *testing.T) {
 }
 
 func TestRun_DontRunProcessIfTimedOutDuringInflate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+
 	mockProcessor := mockProcessor{
 		processingTime: 10 * time.Second,
 	}
@@ -281,14 +319,13 @@ func TestRun_DontRunProcessIfTimedOutDuringInflate(t *testing.T) {
 		preValidator:      mockValidator{},
 		inflater:          inflater,
 		processorProvider: &mockProcessorProvider,
-		loggableBuilder:   service.NewSingleImageImportLoggableBuilder(),
+		logger:            mockLogger,
 		timeout:           100 * time.Millisecond,
 	}
 	start := time.Now()
-	loggable, actualError := importer.Run(context.Background())
+	actualError := importer.Run(context.Background())
 	duration := time.Since(start)
 
-	assert.NotNil(t, loggable)
 	assert.NotNil(t, actualError)
 	assert.Equal(t, 1, inflater.interactions)
 	assert.Equal(t, 0, mockProcessorProvider.interactions)
@@ -299,6 +336,10 @@ func TestRun_DontRunProcessIfTimedOutDuringInflate(t *testing.T) {
 }
 
 func TestRun_ProcessInterruptedTimeout(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+
 	mockProcessor := mockProcessor{
 		processingTime: time.Duration(10) * time.Second,
 	}
@@ -310,14 +351,13 @@ func TestRun_ProcessInterruptedTimeout(t *testing.T) {
 		preValidator:      mockValidator{},
 		inflater:          mockInflater,
 		processorProvider: &mockProcessorProvider,
-		loggableBuilder:   service.NewSingleImageImportLoggableBuilder(),
+		logger:            mockLogger,
 		timeout:           time.Duration(100) * time.Millisecond,
 	}
 	start := time.Now()
-	loggable, actualError := importer.Run(context.Background())
+	actualError := importer.Run(context.Background())
 	duration := time.Since(start)
 
-	assert.NotNil(t, loggable)
 	assert.NotNil(t, actualError)
 	assert.Equal(t, 1, mockInflater.interactions)
 	assert.Equal(t, 1, mockProcessor.interactions)
@@ -327,6 +367,10 @@ func TestRun_ProcessInterruptedTimeout(t *testing.T) {
 }
 
 func TestRun_ProcessCantTimeoutImportSucceeds(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+
 	mockProcessor := mockProcessor{
 		processingTime: time.Duration(1) * time.Second,
 		cantCancel:     true,
@@ -339,14 +383,13 @@ func TestRun_ProcessCantTimeoutImportSucceeds(t *testing.T) {
 		preValidator:      mockValidator{},
 		inflater:          mockInflater,
 		processorProvider: &mockProcessorProvider,
-		loggableBuilder:   service.NewSingleImageImportLoggableBuilder(),
+		logger:            mockLogger,
 		timeout:           time.Duration(100) * time.Millisecond,
 	}
 	start := time.Now()
-	loggable, actualError := importer.Run(context.Background())
+	actualError := importer.Run(context.Background())
 	duration := time.Since(start)
 
-	assert.NotNil(t, loggable)
 	assert.Nil(t, actualError)
 	assert.Equal(t, 1, mockInflater.interactions)
 	assert.Equal(t, 1, mockProcessor.interactions)
@@ -357,6 +400,10 @@ func TestRunStep_VeryShortTimeout(t *testing.T) {
 	// This test ensures that inflater.runStep doesn't dead lock when timeout
 	// has already passed before step function is able to run.
 
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockLogger := mocks.NewMockLogger(ctrl)
+
 	doTestWithTimeOut(t, 2*time.Second, func(t *testing.T) {
 		// run this test with a timeout as it might never finish if there is a bug
 
@@ -364,7 +411,7 @@ func TestRunStep_VeryShortTimeout(t *testing.T) {
 			preValidator:      mockValidator{},
 			inflater:          &mockInflater{},
 			processorProvider: &mockProcessorProvider{},
-			loggableBuilder:   service.NewSingleImageImportLoggableBuilder(),
+			logger:            mockLogger,
 			// this simulates a very short timeout, or a situation when a timeout
 			// occurs immediately after one step finishes and the next one is about
 			// to start
@@ -443,7 +490,7 @@ type mockProcessor struct {
 	cancelChan     chan bool
 }
 
-func (m *mockProcessor) process(pd persistentDisk, loggableBuilder *service.SingleImageImportLoggableBuilder) (persistentDisk, error) {
+func (m *mockProcessor) process(pd persistentDisk) (persistentDisk, error) {
 	m.interactions++
 	m.cancelChan = make(chan bool)
 
@@ -455,8 +502,6 @@ func (m *mockProcessor) process(pd persistentDisk, loggableBuilder *service.Sing
 			break
 		}
 	}
-
-	loggableBuilder.SetUEFIMetrics(true, true, true, "btrfs")
 
 	return pd, m.err
 }

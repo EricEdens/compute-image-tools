@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	daisyUtils "github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/daisy"
-	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
 	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
 	daisyCompute "github.com/GoogleCloudPlatform/compute-image-tools/daisy/compute"
 	"google.golang.org/api/compute/v1"
@@ -43,8 +42,7 @@ func newMetadataProcessor(
 	return &metadataProcessor{project: project, zone: zone, computeDiskClient: computeDiskClient}
 }
 
-func (p *metadataProcessor) process(pd persistentDisk,
-	loggableBuilder *service.SingleImageImportLoggableBuilder) (persistentDisk, error) {
+func (p *metadataProcessor) process(pd persistentDisk) (persistentDisk, error) {
 
 	// Fast path 1: No modification requested.
 	if len(p.requiredFeatures) == 0 && len(p.requiredLicenses) == 0 {

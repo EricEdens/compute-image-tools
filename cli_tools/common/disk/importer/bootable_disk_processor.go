@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	daisy_utils "github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/daisy"
-	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/daisycommon"
 	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
 )
@@ -31,8 +30,7 @@ type bootableDiskProcessor struct {
 	workflow *daisy.Workflow
 }
 
-func (b *bootableDiskProcessor) process(pd persistentDisk,
-	loggableBuilder *service.SingleImageImportLoggableBuilder) (persistentDisk, error) {
+func (b *bootableDiskProcessor) process(pd persistentDisk) (persistentDisk, error) {
 
 	b.workflow.AddVar("source_disk", pd.uri)
 	var err error

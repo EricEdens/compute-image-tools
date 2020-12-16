@@ -28,6 +28,7 @@ import (
 	"time"
 
 	daisyutils "github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/daisy"
+	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging"
 	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
 	"github.com/GoogleCloudPlatform/compute-image-tools/proto/go/pb"
 	"github.com/google/uuid"
@@ -138,18 +139,18 @@ func (l *Logger) logStart() (*ComputeImageToolsLogExtension, logResult) {
 }
 
 // logSuccess logs a "success" info to server
-func (l *Logger) logSuccess(loggable Loggable) (*ComputeImageToolsLogExtension, logResult) {
-	logExtension := l.createComputeImageToolsLogExtension(statusSuccess, l.getOutputInfo(loggable, nil))
+func (l *Logger) logSuccess(outputInfoReader logging.OutputInfoReader) (*ComputeImageToolsLogExtension, logResult) {
+	logExtension := l.createComputeImageToolsLogExtension(statusSuccess, l.getOutputInfo(outputInfoReader, nil))
 	return logExtension, l.sendLogToServer(logExtension)
 }
 
 // logFailure logs a "failure" info to server
-func (l *Logger) logFailure(err error, loggable Loggable) (*ComputeImageToolsLogExtension, logResult) {
-	logExtension := l.createComputeImageToolsLogExtension(statusFailure, l.getOutputInfo(loggable, err))
+func (l *Logger) logFailure(err error, outputInfoReader logging.OutputInfoReader) (*ComputeImageToolsLogExtension, logResult) {
+	logExtension := l.createComputeImageToolsLogExtension(statusFailure, l.getOutputInfo(outputInfoReader, err))
 	return logExtension, l.sendLogToServer(logExtension)
 }
 
-func (l *Logger) createComputeImageToolsLogExtension(status string, outputInfo *OutputInfo) *ComputeImageToolsLogExtension {
+func (l *Logger) createComputeImageToolsLogExtension(status string, outputInfo *pb.OutputInfo) *ComputeImageToolsLogExtension {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
@@ -181,38 +182,21 @@ func getAnonymizedFailureReason(err error) string {
 	return strings.Join(anonymizedErrs, "\n")
 }
 
-func (l *Logger) getOutputInfo(loggable Loggable, err error) *OutputInfo {
-	o := OutputInfo{}
-
-	if loggable != nil {
-		o.TargetsSizeGb = loggable.GetValueAsInt64Slice(targetSizeGb)
-		o.SourcesSizeGb = loggable.GetValueAsInt64Slice(sourceSizeGb)
-		o.ImportFileFormat = loggable.GetValue(importFileFormat)
-		o.InflationType = loggable.GetValue(inflationType)
-		o.InflationTime = loggable.GetValueAsInt64Slice(inflationTime)
-		o.ShadowInflationTime = loggable.GetValueAsInt64Slice(shadowInflationTime)
-		o.ShadowDiskMatchResult = loggable.GetValue(shadowDiskMatchResult)
-		o.IsUEFICompatibleImage = loggable.GetValueAsBool(isUEFICompatibleImage)
-		o.IsUEFIDetected = loggable.GetValueAsBool(isUEFIDetected)
-
-		// TODO: ideally we suppose to set o.InspectionResults. Will modify after proto is adjusted.
-		if l.Params.ImageImportParams != nil {
-			l.Params.ImageImportParams.InspectionResults = loggable.GetInspectionResults()
-		}
-	}
+func (l *Logger) getOutputInfo(outputInfoReader logging.OutputInfoReader, err error) *pb.OutputInfo {
+	o := outputInfoReader.ReadOutputInfo()
 
 	if err != nil {
 		o.FailureMessage = getFailureReason(err)
 		o.FailureMessageWithoutPrivacyInfo = getAnonymizedFailureReason(err)
-		if loggable != nil {
-			o.SerialOutputs = loggable.ReadSerialPortLogs()
-		}
+	} else {
+		// Only include serial outputs if there's a failure.
+		o.SerialOutputs = nil
 	}
 
-	return &o
+	return o
 }
 
-func (l *Logger) runWithServerLogging(function func() (Loggable, error),
+func (l *Logger) runWithServerLogging(function func() (logging.OutputInfoReader, error),
 	projectPointer *string) (*ComputeImageToolsLogExtension, error) {
 
 	var logExtension *ComputeImageToolsLogExtension
@@ -227,13 +211,13 @@ func (l *Logger) runWithServerLogging(function func() (Loggable, error),
 		l.logStart()
 	}()
 
-	loggable, err := function()
+	outputInfoReader, err := function()
 	l.updateParams(projectPointer)
 	if err != nil {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			logExtension, _ = l.logFailure(err, loggable)
+			logExtension, _ = l.logFailure(err, outputInfoReader)
 
 			// Remove new lines from multi-line failure messages as gcloud depends on
 			// log prefix to filter out relevant log lines. Making this change in
@@ -246,7 +230,7 @@ func (l *Logger) runWithServerLogging(function func() (Loggable, error),
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			logExtension, _ = l.logSuccess(loggable)
+			logExtension, _ = l.logSuccess(outputInfoReader)
 		}()
 	}
 
@@ -262,7 +246,7 @@ func removeNewLinesFromMultilineError(s string) string {
 
 // RunWithServerLogging runs the function with server logging
 func RunWithServerLogging(action string, params InputParams, projectPointer *string,
-	function func() (Loggable, error)) error {
+	function func() (logging.OutputInfoReader, error)) error {
 	l := NewLoggingServiceLogger(action, params)
 	_, err := l.runWithServerLogging(function, projectPointer)
 	return err
@@ -384,13 +368,4 @@ func Hash(s string) string {
 	hash, _ := highwayhash.New([]byte("compute-image-tools-obfuscate-01"))
 	hash.Write([]byte(s))
 	return hex.EncodeToString(hash.Sum(nil))
-}
-
-// Loggable contains fields relevant to import and export logging.
-type Loggable interface {
-	GetValue(key string) string
-	GetValueAsBool(key string) bool
-	GetValueAsInt64Slice(key string) []int64
-	GetInspectionResults() *pb.InspectionResults
-	ReadSerialPortLogs() []string
 }

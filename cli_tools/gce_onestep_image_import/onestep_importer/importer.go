@@ -23,7 +23,7 @@ import (
 
 	daisyUtils "github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/daisy"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/flags"
-	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
+	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/validation"
 	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
 )
@@ -239,7 +239,7 @@ func (args *OneStepImportArguments) validate() error {
 }
 
 // Run performs onestep image import.
-func Run(args *OneStepImportArguments) (service.Loggable, error) {
+func Run(args *OneStepImportArguments) (logging.OutputInfoReader, error) {
 	// validate required flags that are not cloud-provider specific.
 	if err := args.validate(); err != nil {
 		return nil, err

@@ -21,6 +21,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/gce_windows_upgrade/upgrader"
 )
@@ -45,7 +46,7 @@ var (
 	stdoutLogsDisabled     = flag.Bool("disable-stdout-logging", false, "Set to true to disable detailed stdout information.")
 )
 
-func upgradeEntry() (service.Loggable, error) {
+func upgradeEntry() (logging.OutputInfoReader, error) {
 	p := &upgrader.InputParams{
 		ClientID:               strings.TrimSpace(*clientID),
 		Instance:               strings.TrimSpace(*instance),

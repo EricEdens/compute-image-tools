@@ -20,6 +20,7 @@ import (
 	"log"
 
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/compute"
+	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging"
 	"github.com/GoogleCloudPlatform/compute-image-tools/cli_tools/common/utils/logging/service"
 	"github.com/GoogleCloudPlatform/compute-image-tools/daisy"
 	daisyCompute "github.com/GoogleCloudPlatform/compute-image-tools/daisy/compute"
@@ -106,12 +107,12 @@ type upgrader struct {
 }
 
 // Run runs upgrader.
-func Run(p *InputParams) (service.Loggable, error) {
+func Run(p *InputParams) (logging.OutputInfoReader, error) {
 	u := upgrader{InputParams: p}
 	return u.run()
 }
 
-func (u *upgrader) run() (service.Loggable, error) {
+func (u *upgrader) run() (logging.OutputInfoReader, error) {
 	if err := u.init(); err != nil {
 		return nil, err
 	}
@@ -122,7 +123,7 @@ func (u *upgrader) run() (service.Loggable, error) {
 		return nil, err
 	}
 	w, err := u.runUpgradeWorkflow()
-	return service.NewLoggableFromWorkflow(w), err
+	return service.NewOutputInfoReaderFromWorkflow(w), err
 }
 
 func (u *upgrader) init() error {
